@@ -1,7 +1,0 @@
-Autonomous exploration of drones is a fundamental problem for various applications. 
-Existing methods have made significant strides in exploration tasks within small-scale environments. However, due to insufficient viewpoint quality and limited emphasis on boundary exploration, they face challenges in large-scale scene exploration, such as excessively long flight paths and inefficient utilization of boundary information. 
-In this paper, we propose a viewpoint generation scheme based on regional exploration and a global loss function associated with the boundaries. 
-Specifically, we first identify safe regions near the environment's boundary and generate Gaussian-distributed viewpoints within these regions. 
-Then, we divide the exploration area into multiple sub-regions and compute the traversal order of these regions to prioritize the exploration of critical areas. 
-We utilize a boundary gain mechanism to balance between different exploration regions, reducing the backtracking phenomenon of drones during large-scale scene exploration. 
-Experiments in several real-world environments demonstrate that the proposed method performs excellently in complex environments, significantly improving exploration efficiency and enhancing the drone's autonomous exploration capability in large-scale spaces.
