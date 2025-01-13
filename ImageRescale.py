@@ -24,10 +24,13 @@ class CropImageApp:
         self.start_y = None
         self.end_x = None
         self.end_y = None
-        self.max_width = 800  # 图像显示最大宽度
-        self.max_height = 480  # 图像显示最大高度
+        self.max_width = 480  # 图像显示最大高度
+        self.max_height = 800  # 图像显示最大宽度
         # self.dpi = 150  # 默认DPI设置为150
-        self.scale_factor = 1  # 缩放比例
+        self.resize_factor = 1  # 缩放比例
+        self.crop_factor = (1,1)  # 缩放比例
+        self.last_crop_coords = (0,0)  # 保存上一次裁剪的坐标
+        self.crop_times = 0  # 裁剪次数
 
         # 添加按钮和画布
         self.create_widgets()
@@ -39,18 +42,18 @@ class CropImageApp:
         header_frame = tk.Frame(self.root)
         header_frame.pack(pady=10, anchor="w")  # 让它靠左显示
 
-        # 加载图标
-        icon_image = Image.open("icon.jpeg")
-        icon_image = icon_image.resize((150, 150))  # 修改为你希望的大小，例如 32x32
-        icon_image = ImageTk.PhotoImage(icon_image)
+        # # 加载图标
+        # icon_image = Image.open("icon.ico")
+        # icon_image = icon_image.resize((150, 150))  # 修改为你希望的大小，例如 32x32
+        # icon_image = ImageTk.PhotoImage(icon_image)
 
-        # 设置窗口图标
-        root.iconphoto(True, icon_image)
+        # # 设置窗口图标
+        # root.iconphoto(True, icon_image)
 
-        # 创建图标
-        icon_label = tk.Label(header_frame, image=icon_image)
-        icon_label.image = icon_image  # 保持引用，防止图标被垃圾回收
-        icon_label.pack(side="left", padx=5)
+        # # 创建图标
+        # icon_label = tk.Label(header_frame, image=icon_image)
+        # icon_label.image = icon_image  # 保持引用，防止图标被垃圾回收
+        # icon_label.pack(side="left", padx=5)
 
         # 创建说明文字
         text_notation = "" \
@@ -99,10 +102,16 @@ class CropImageApp:
         self.save_svg_button = tk.Button(button_frame, text="保存为 SVG", command=lambda: self.save_image("svg"), width=8, height=1)
         self.save_svg_button.grid(row=1, column=4, padx=5, pady=5)
 
+        self.save_svg_button = tk.Button(button_frame, text="保存为 ICO", command=lambda: self.save_image("ico"), width=8, height=1)
+        self.save_svg_button.grid(row=1, column=5, padx=5, pady=5)
+
         # 创建裁剪按钮
         self.crop_button = tk.Button(button_frame, text="裁剪图像", command=self.start_crop, width=8, height=1)
-        self.crop_button.grid(row=2, column=0, padx=5, pady=5)
+        self.crop_button.grid(row=2, column=2, padx=5, pady=5)
 
+        # 创建还原按钮
+        self.reset_button = tk.Button(button_frame, text="还原图片", command=self.reset_image, width=8, height=1)
+        self.reset_button.grid(row=2, column=3, padx=5, pady=5)
         # 创建桌面截图按钮
         # self.screenshot_button = tk.Button(button_frame, text="截取桌面截图", command=self.take_screenshot, width=8, height=1)
         # self.screenshot_button.grid(row=2, column=1, padx=5, pady=5)
@@ -111,10 +120,12 @@ class CropImageApp:
 
         # 创建宽度输入框
         self.width_label = tk.Label(button_frame, text="宽度 (英寸):")
-        self.width_label.grid(row=3, column=0, padx=5)
+        self.width_label.grid(row=2, column=0, padx=5)
         self.width_entry = tk.Entry(button_frame, width=10)
-        self.width_entry.grid(row=3, column=1, padx=5)
+        self.width_entry.grid(row=2, column=1, padx=5)
         self.width_entry.insert(0, "3.5")  # 默认值
+
+
 
         # # 创建高度输入框
         # self.height_label = tk.Label(button_frame, text="高度 (英寸):")
@@ -125,13 +136,21 @@ class CropImageApp:
 
         # 创建 DPI 输入框
         self.dpi_label = tk.Label(button_frame, text="DPI:")
-        self.dpi_label.grid(row=3, column=2, padx=5)
+        self.dpi_label.grid(row=3, column=0, padx=5)
         self.dpi_entry = tk.Entry(button_frame, width=10)
-        self.dpi_entry.grid(row=3, column=3, padx=5)
+        self.dpi_entry.grid(row=3, column=1, padx=5)
         self.dpi_entry.insert(0, "400")  # 默认值
 
+        # 创建pdf page输入框
+        self.page_label = tk.Label(button_frame, text="Pdf page:")
+        self.page_label.grid(row=4, column=0, padx=5)
+        self.page_entry = tk.Entry(button_frame, width=10)
+        self.page_entry.grid(row=4, column=1, padx=5)
+        self.page_entry.insert(0, "0")  # 默认值
+
+        # 创建 DPI Show框
         self.dpi_show_label = tk.Label(button_frame, text="DPI: 未知", font=("Arial", 10))
-        self.dpi_show_label.grid(row=3, column=4, padx=5)
+        self.dpi_show_label.grid(row=4, column=2, padx=5)
         # self.dpi_show_label.pack(pady=10)
 
     def no_op(self):
@@ -179,20 +198,50 @@ class CropImageApp:
             bottom = self.original_image.height
         else:
             # 计算缩放后的坐标
-            left = min(self.start_x, self.end_x) / self.scale_factor
-            top = min(self.start_y, self.end_y) / self.scale_factor
-            right = max(self.start_x, self.end_x) / self.scale_factor
-            bottom = max(self.start_y, self.end_y) / self.scale_factor
+            # print(f"self.crop_factor: {self.crop_factor},resize_factor:{self.resize_factor} ")
+            factor_x=(self.resize_factor/self.crop_factor[0])
+            factor_y=(self.resize_factor/self.crop_factor[1])
+            # print(f"factor_x: {factor_x},factor_y:{factor_y} ")
+            left = (min(self.start_x, self.end_x) +self.last_crop_coords[0])/ factor_x
+            top = (min(self.start_y, self.end_y) +self.last_crop_coords[1])/ factor_y
+            right = (max(self.start_x, self.end_x) +self.last_crop_coords[0])/ factor_x
+            bottom = (max(self.start_y, self.end_y) +self.last_crop_coords[1])/ factor_y
 
         # 在原图上进行裁剪
+        # print(self.start_x, self.start_y, self.end_x,self.end_y )
+        # print(left, top, right, bottom)
         cropped_image = self.original_image.crop((left, top, right, bottom))
+        
 
-        # 显示裁剪后的图像
+        # print(f"1111111111111self.crop_factor: {self.crop_factor},resize_factor:{self.resize_factor} ")
         self.image = cropped_image  # 这里保留了原始分辨率
-        self.tk_image = ImageTk.PhotoImage(self.image)
+        # 显示裁剪后的图像
+        self.showimage = self.resize_image(self.image)
+        self.tk_image = ImageTk.PhotoImage(self.showimage)
+        self.crop_factor = ((right - left) / (self.image.width*self.crop_factor[0]), (bottom-top)/(self.image.height*self.crop_factor[1]))
+        c_w=(max(self.start_x, self.end_x) - min(self.start_x, self.end_x))/(self.showimage.width*self.crop_factor[0])
+        c_h=(max(self.start_y, self.end_y)-min(self.start_y, self.end_y))/(self.showimage.height*self.crop_factor[1])
+        # self.crop_factor = (c_w,c_h)
 
         # 更新画布
+        self.canvas.delete("all")  # 清除画布上的所有内容
         self.canvas.create_image(0, 0, image=self.tk_image, anchor="nw")
+
+        # 计算并更新 DPI（基于原始图像）
+        width, height = self.image.size
+        print_width_inch = float(self.width_entry.get())  # 获取输入的打印宽度（英寸）
+        # print(f"test : {width},{height},{print_width_inch}")
+        dpi = width / print_width_inch  # DPI = 像素 / 英寸
+        self.dpi = dpi  # 更新 DPI 值
+
+        # 更新 DPI 显示标签
+        self.dpi_show_label.config(text=f"Now DPI: {int(self.dpi)}", font=("Arial", 10), fg="red")
+        # 计算缩放比例
+        self.resize_factor = (self.showimage.width / self.original_image.width)*self.crop_factor[0]
+        # print(f"222222222self.resize_factor: {self.resize_factor}")
+        # 更新裁剪框位置为当前裁剪区域的坐标
+        self.last_crop_coords = (min(self.start_x, self.end_x), min(self.start_y, self.end_y))
+
 
     def load_png_image(self):
         """加载 PNG 图像"""
@@ -255,7 +304,7 @@ class CropImageApp:
             # 更新 DPI 显示标签
             self.dpi_show_label.config(text=f"Now DPI: {int(self.dpi)}", font=("Arial", 10),fg="red")  # 将 DPI 显示为整数  ,int(self.dpih)
 
-            print(f"图像原始尺寸: {self.original_image.size}")  # 打印原图尺寸
+            # print(f"图像原始尺寸: {self.original_image.size}")  # 打印原图尺寸
         except Exception as e:
             messagebox.showerror("错误", f"加载图像失败: {e}")
             return
@@ -263,7 +312,7 @@ class CropImageApp:
         # 等比例缩放图像以适应显示
         self.image = self.resize_image(self.original_image)
 
-        print(f"图像缩放后的尺寸: {self.image.size}")  # 打印缩放后的尺寸
+        # print(f"图像缩放后的尺寸: {self.image.size}")  # 打印缩放后的尺寸
 
         # 将图像转换为适合 Tkinter 显示的格式
         self.tk_image = ImageTk.PhotoImage(self.image)
@@ -278,13 +327,23 @@ class CropImageApp:
         self.canvas.create_image(0, 0, image=self.tk_image, anchor="nw")
 
         # 计算缩放比例
-        self.scale_factor = self.image.width / self.original_image.width
+        self.resize_factor = self.image.width / self.original_image.width
 
     def load_pdf(self, file_path):
         """处理 PDF 格式图像"""
-        images = convert_from_path(file_path, dpi=600)  # 可以根据需要调整DPI
-        images = convert_from_path(file_path)  # 可以根据需要调整DPI
-        return images[0]  # 只获取第一页，或者根据需求处理多页
+        images = convert_from_path(file_path, dpi=600)  # 根据需要调整 DPI
+        total_pages = len(images)  # 获取 PDF 总页数
+
+        # 打印当前 PDF 的总页数和用户指定的页面索引
+        print(f"PDF 总页数: {total_pages}, 当前页面索引: {self.page_entry.get()}")
+        
+        # 检查用户指定的页面是否在范围内
+        page_index = int(self.page_entry.get())  # 假设 self.page_entry 是 tkinter 的 IntVar 对象
+        if 0 <= int(page_index) < total_pages:
+            return images[page_index]  # 返回指定的页面
+        else:
+            raise ValueError(f"页面索引 {page_index} 超出范围（0 - {total_pages - 1}）")
+
 
     def load_eps(self, file_path):
         """处理 EPS 格式图像"""
@@ -301,37 +360,69 @@ class CropImageApp:
         max_height = self.max_height
         width, height = image.size
 
-        if width > max_width or height > max_height:
-            # 根据最大宽度和高度进行等比例缩放
-            ratio = min(max_width / width, max_height / height)
-            new_width = int(width * ratio)
-            new_height = int(height * ratio)
-            return image.resize((new_width, new_height), Image.Resampling.LANCZOS)  # 使用LANCZOS代替ANTIALIAS
-        return image
+        # 根据最大宽度和高度进行等比例缩放
+        ratio = min(max_width / width, max_height / height)
+        new_width = int(width * ratio)
+        new_height = int(height * ratio)
+        return image.resize((new_width, new_height), Image.Resampling.LANCZOS)  # 使用LANCZOS代替ANTIALIAS
 
     def save_image(self, file_format):
         """保存图像为不同格式"""
         if self.image:
             file_path = filedialog.asksaveasfilename(defaultextension=f".{file_format}",
-                                                     filetypes=[(f"{file_format.upper()} files", f"*.{file_format}")])
+                                                    filetypes=[(f"{file_format.upper()} files", f"*.{file_format}")])
             if file_path:
                 try:
                     dpi_value = float(self.dpi_entry.get())  # 获取输入框中的DPI值
                 except ValueError:
                     messagebox.showerror("错误", "请输入有效的 DPI 值！")
                     return
-            width_inch = float(self.width_entry.get())  
-            dpi_value = float(self.dpi_entry.get())  
-            width_px = int(width_inch * dpi_value)
-            height_px = int( ( self.image.height/self.image.width)*width_px )
 
-            # 调整图像大小（如果需要的话）
-            self.image = self.image.resize((width_px, height_px), Image.Resampling.LANCZOS)
-            # 将 DPI 转换为元组 (dpi, dpi)
-            self.image.save(file_path, format=file_format.upper())
-            messagebox.showinfo("保存成功", f"图像已保存为 {file_format.upper()} 格式")
+                # 获取图像尺寸和DPI
+                width_inch = float(self.width_entry.get())
+                width_px = int(width_inch * dpi_value)
+                height_px = int((self.image.height / self.image.width) * width_px)
+
+                # 调整图像大小（如果需要的话）
+                self.image = self.image.resize((width_px, height_px), Image.Resampling.LANCZOS)
+
+                # 将 DPI 设置为图像的元组形式 (dpi_value, dpi_value)
+                self.image.save(file_path, format=file_format.upper(), dpi=(dpi_value, dpi_value))
+
+                messagebox.showinfo("保存成功", f"图像已保存为 {file_format.upper()} 格式")
         else:
             messagebox.showerror("错误", "没有加载图像！")
+
+    def reset_image(self):
+        """还原到原始图像"""
+        if self.original_image:
+            # 还原为原始图像
+            self.image = self.resize_image(self.original_image)  # 根据最大宽度和最大高度进行缩放
+
+            # 将图像转换为适合 Tkinter 显示的格式
+            self.tk_image = ImageTk.PhotoImage(self.image)
+
+            # 清空画布并重新设置画布大小为图像的大小
+            self.canvas.delete("all")  # 清除画布上的所有图像
+            self.canvas.config(width=self.image.width, height=self.image.height)
+
+            # 在画布上显示图像
+            self.canvas.create_image(0, 0, image=self.tk_image, anchor="nw")
+
+            # 计算并更新 DPI（基于原始图像）
+            width, height = self.original_image.size
+            print_width_inch = float(self.width_entry.get())  # 获取输入的打印宽度（英寸）
+            dpi = width / print_width_inch  # DPI = 像素 / 英寸
+            self.dpi = dpi  # 更新 DPI 值
+            # 更新 DPI 显示标签
+            self.dpi_show_label.config(text=f"Now DPI: {int(self.dpi)}", font=("Arial", 10), fg="red")
+            self.last_crop_coords = (0, 0)
+            self.crop_factor = (1, 1)
+            # 计算缩放比例
+            self.resize_factor = self.image.width / self.original_image.width
+
+        else:
+            messagebox.showerror("错误", "没有加载原始图像！")
 
     # def take_screenshot(self):
     #     """截取桌面截图"""
